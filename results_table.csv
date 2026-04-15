@@ -1,0 +1,9 @@
+Model,Accuracy,Precision,Recall,F1-Score,ROC-AUC
+Bayesian (Naive Bayes),0.992,0.9893,0.984,0.9866,0.9989
+Decision Trees,0.9968,0.9947,0.9947,0.9947,0.9968
+Random Forest,0.9968,0.9894,1.0,0.9947,0.9999
+Simple Linear Regression,0.6991,0.0,0.0,0.0,0.657
+Multiple Linear Regression,0.9625,0.9227,0.9555,0.9388,0.9972
+Logistic Regression,0.9963,0.9894,0.9982,0.9938,0.9998
+KNN,0.9764,0.9481,0.9751,0.9614,0.9905
+SVM,0.993,0.9791,0.9982,0.9885,0.9999
