@@ -6,7 +6,7 @@ Date: April 2025
 1. INTRODUCTION
 ====================================================================
 
-This report presents a comparative analysis of eight machine learning algorithms applied to a TV shows and movies dataset. The objective is to classify content as either a "Movie" or a "TV Show" using extracted features from the dataset, evaluate each algorithm using five classification metrics, and visualize the results through plots.
+This report presents a comparative analysis of ten machine learning algorithms applied to a TV shows and movies dataset. The objective is to classify content as either a "Movie" or a "TV Show" using extracted features from the dataset, evaluate each algorithm using five classification metrics, and visualize the results through plots. In Homework 2, two Artificial Neural Network (ANN) models — LSTM and GRU — were added to extend the original eight traditional ML algorithms.
 
 The dataset used is tv-shows.csv, a collection of 9,338 titles from streaming platforms including Netflix. The dataset is in tabular CSV format and falls under the Tabular modality category.
 
@@ -204,12 +204,44 @@ KNN classifies a new sample by finding its 5 nearest neighbors in feature space 
 
 SVM finds the optimal hyperplane that maximally separates the two classes. It focuses on "support vectors" (training points closest to the boundary). The RBF (Radial Basis Function) kernel allows SVM to handle non-linear boundaries by mapping data into a higher-dimensional space. The probability=True parameter enables probability estimates needed for ROC-AUC calculation.
 
+7.9 LSTM (Long Short-Term Memory) — Homework 2
+
+LSTM is a type of Recurrent Neural Network (RNN) designed to learn long-range dependencies in sequential data. Unlike standard RNNs that suffer from the vanishing gradient problem, LSTM uses a gating mechanism with three gates: the forget gate (decides what information to discard), the input gate (decides what new information to store), and the output gate (decides what to output). Each gate uses sigmoid activations to control the flow of information through a cell state.
+
+Architecture used:
+- Input shape: (13, 1) — each of the 13 features treated as one timestep
+- Layer 1: LSTM(64 units, return_sequences=True)
+- Layer 2: LSTM(32 units)
+- Layer 3: Dense(16, activation='relu')
+- Layer 4: Dropout(0.3) — regularization to prevent overfitting
+- Output: Dense(1, activation='sigmoid') — binary classification
+- Optimizer: Adam (learning_rate=0.001)
+- Loss: binary_crossentropy
+- Training: max 50 epochs with EarlyStopping (patience=5), 15% validation split
+
+Since our dataset is tabular (not sequential), the 13 features were reshaped into a pseudo-sequence of shape (samples, 13, 1), treating each feature as one timestep. This is a standard approach for applying RNNs to tabular data for comparison purposes.
+
+7.10 GRU (Gated Recurrent Unit) — Homework 2
+
+GRU is a simplified variant of LSTM that uses only two gates instead of three: the reset gate (controls how much past information to forget) and the update gate (controls how much new information to incorporate). GRU merges the cell state and hidden state into a single hidden state, making it computationally more efficient with fewer parameters than LSTM while maintaining similar performance on many tasks.
+
+Architecture used:
+- Input shape: (13, 1) — same reshaping as LSTM
+- Layer 1: GRU(64 units, return_sequences=True)
+- Layer 2: GRU(32 units)
+- Layer 3: Dense(16, activation='relu')
+- Layer 4: Dropout(0.3)
+- Output: Dense(1, activation='sigmoid')
+- Optimizer: Adam (learning_rate=0.001)
+- Loss: binary_crossentropy
+- Training: max 50 epochs with EarlyStopping (patience=5), 15% validation split
+
 
 ====================================================================
 8. RESULTS
 ====================================================================
 
-8.1 Result Table
+8.1 Result Table (10 models: 8 traditional ML + 2 ANN)
 
 Model                       Accuracy  Precision  Recall  F1-Score  ROC-AUC
 ---------------------------------------------------------------------------
@@ -221,8 +253,10 @@ Multiple Linear Regression    0.9625    0.9227   0.9555   0.9388   0.9972
 Logistic Regression           0.9963    0.9894   0.9982   0.9938   0.9998
 KNN                           0.9764    0.9481   0.9751   0.9614   0.9905
 SVM                           0.9930    0.9791   0.9982   0.9885   0.9999
+LSTM                          0.9845    0.9734   0.9751   0.9742   0.9977
+GRU                           0.9234    0.8238   0.9484   0.8817   0.9725
 
-8.2 Analysis
+8.2 Analysis — Traditional ML Models
 
 Best performing algorithms:
 - Decision Trees and Random Forest tied for highest accuracy (0.9968) and F1-Score (0.9947).
@@ -238,28 +272,52 @@ Key insight:
 Why are scores so high?
 - The duration_num feature provides near-perfect class separation. Movies are measured in minutes (typically 60-300) while TV shows are measured in seasons (typically 1-15). Most algorithms can easily exploit this strong signal.
 
+8.3 Analysis — ANN Models (Homework 2 Findings)
+
+LSTM Performance:
+- LSTM achieved Accuracy = 0.9845, F1-Score = 0.9742, ROC-AUC = 0.9977.
+- Training stopped at epoch 22 out of 50 (early stopping), indicating the model converged relatively quickly.
+- LSTM performs comparably to KNN (0.9764) and SVM (0.9930), placing it in the upper-middle tier of all 10 models.
+
+GRU Performance:
+- GRU achieved Accuracy = 0.9234, F1-Score = 0.8817, ROC-AUC = 0.9725.
+- Training stopped at epoch 5 out of 50 (very early stopping), suggesting the model did not have enough epochs to learn complex patterns before validation loss plateaued.
+- GRU underperformed compared to LSTM, likely because its simpler gating mechanism (2 gates vs 3) may converge to a less optimal solution with fewer training iterations.
+
+Comparison — Traditional ML vs ANN:
+- Traditional ML models (especially Random Forest, Decision Trees, and Logistic Regression) outperformed both ANN models on this particular dataset.
+- This is expected for tabular data with well-engineered features. RNNs (LSTM/GRU) are designed for sequential data (time series, text, speech). When applied to tabular data with pseudo-sequence reshaping, they cannot fully exploit their sequential learning capabilities.
+- The overhead of neural network training (more parameters, gradient-based optimization) does not provide an advantage when simpler models can already achieve 99%+ accuracy using straightforward feature relationships.
+- LSTM outperformed GRU, likely due to its more expressive gating mechanism (3 gates vs 2) allowing finer control over information flow.
+
+Key Takeaway:
+- Algorithm selection should match the data modality. For tabular classification with well-separated features, traditional ML algorithms are sufficient and often superior. RNNs shine on truly sequential data where temporal dependencies matter.
+
 
 ====================================================================
 9. PLOTS
 ====================================================================
 
-Three plots were generated to visualize the results:
+Four plots were generated to visualize the results:
 
 9.1 Confusion Matrices (confusion_matrices.png)
-An 8-panel grid showing the confusion matrix for each model. Each matrix is a 2x2 grid displaying True Negatives (Movie correctly predicted), False Positives (Movie incorrectly predicted as TV Show), False Negatives (TV Show incorrectly predicted as Movie), and True Positives (TV Show correctly predicted). The diagonal values represent correct predictions.
+A 2x5 grid (10 panels) showing the confusion matrix for each model, including the new LSTM and GRU models. Each matrix is a 2x2 grid displaying True Negatives (Movie correctly predicted), False Positives (Movie incorrectly predicted as TV Show), False Negatives (TV Show incorrectly predicted as Movie), and True Positives (TV Show correctly predicted). The diagonal values represent correct predictions.
 
 9.2 ROC Curves (roc_curves.png)
-All eight ROC curves are overlaid on a single plot. The ROC curve plots True Positive Rate vs False Positive Rate at various decision thresholds. Models whose curves hug the top-left corner perform better. The dashed diagonal line represents random guessing (AUC = 0.5). Simple Linear Regression's curve is closest to the diagonal, while all other models are near the top-left corner.
+All ten ROC curves are overlaid on a single plot. The ROC curve plots True Positive Rate vs False Positive Rate at various decision thresholds. Models whose curves hug the top-left corner perform better. The dashed diagonal line represents random guessing (AUC = 0.5). Simple Linear Regression's curve is closest to the diagonal, while all other models including LSTM and GRU are near the top-left corner.
 
 9.3 Metrics Bar Chart (metrics_comparison.png)
-A grouped bar chart comparing all five metrics across all eight models. Each model has five bars (one per metric) allowing quick visual comparison. Simple Linear Regression's bars are visibly shorter, while Decision Trees, Random Forest, and Logistic Regression show consistently tall bars across all metrics.
+A grouped bar chart comparing all five metrics across all ten models. Each model has five bars (one per metric) allowing quick visual comparison. LSTM bars are comparable to KNN and SVM, while GRU bars are somewhat shorter, reflecting its lower performance on this tabular dataset.
+
+9.4 ANN Training History (ann_training_history.png)
+A 2x2 grid showing training and validation curves for both LSTM and GRU. The top row displays loss curves (training loss vs validation loss over epochs) and the bottom row displays accuracy curves. These plots help visualize how quickly each model converges and whether overfitting occurs. LSTM shows gradual convergence over 22 epochs, while GRU converges much faster (5 epochs) but to a lower performance level.
 
 
 ====================================================================
 10. CONCLUSION
 ====================================================================
 
-This assignment demonstrated the application of eight machine learning algorithms to a binary classification task using streaming platform data. Key findings include:
+This assignment demonstrated the application of ten machine learning algorithms (8 traditional ML + 2 ANN) to a binary classification task using streaming platform data. Key findings include:
 
 1. Random Forest and Decision Trees achieved the highest overall performance, with Random Forest achieving perfect recall.
 2. Ensemble methods (Random Forest) outperformed individual algorithms in terms of stability and ROC-AUC.
@@ -267,7 +325,10 @@ This assignment demonstrated the application of eight machine learning algorithm
 4. Logistic Regression, as the proper classification counterpart to Linear Regression, achieved near-perfect results.
 5. Feature engineering transforming raw text and categorical data into numeric features was essential for algorithm compatibility.
 6. The duration_num feature was the most discriminative, providing near-perfect class separation.
-7. Feature scaling was critical for distance-based algorithms (KNN, SVM) but unnecessary for tree-based methods.
+7. Feature scaling was critical for distance-based algorithms (KNN, SVM) and neural networks (LSTM, GRU).
+8. LSTM (Accuracy=0.9845) outperformed GRU (Accuracy=0.9234), demonstrating that the additional forget gate in LSTM provides finer control over information retention.
+9. Both ANN models underperformed compared to the best traditional ML models on this tabular dataset, confirming that RNNs are best suited for truly sequential data rather than tabular feature sets.
+10. Algorithm selection should match the data modality — for well-engineered tabular features, traditional ML algorithms are often sufficient and superior to deep learning approaches.
 
 The complete code, results table, and all plots are available in the project repository.
 
@@ -276,14 +337,15 @@ The complete code, results table, and all plots are available in the project rep
 11. FILES IN THIS PROJECT
 ====================================================================
 
-- tv-shows.csv            : Original dataset (9,338 rows, 13 columns)
-- ml_assignment.py         : Complete Python script with all 8 algorithms
-- results_table.csv        : Output result table (8 models x 5 metrics)
-- confusion_matrices.png   : Confusion matrix plots for all models
-- roc_curves.png           : Overlaid ROC curves for all models
-- metrics_comparison.png   : Grouped bar chart of all metrics
-- EXPLANATION.md           : Detailed technical explanation (Markdown)
-- REPORT.txt               : This report (plain text for Word conversion)
+- tv-shows.csv              : Original dataset (9,338 rows, 13 columns)
+- ml_assignment.py           : Complete Python script with all 10 algorithms (8 ML + 2 ANN)
+- results_table.csv          : Output result table (10 models x 5 metrics)
+- confusion_matrices.png     : Confusion matrix plots for all 10 models (2x5 grid)
+- roc_curves.png             : Overlaid ROC curves for all 10 models
+- metrics_comparison.png     : Grouped bar chart of all metrics for 10 models
+- ann_training_history.png   : LSTM & GRU training/validation loss and accuracy curves
+- EXPLANATION.md             : Detailed technical explanation (Markdown)
+- REPORT.txt                 : This report (plain text for Word conversion)
 
 
 ====================================================================
@@ -296,3 +358,5 @@ The complete code, results table, and all plots are available in the project rep
 - scikit-learn 1.8.0    : Machine learning algorithms and metrics
 - matplotlib 3.10.8     : Plotting and visualization
 - seaborn 0.13.2        : Statistical visualizations
+- tensorflow 2.21.0     : Deep learning framework (LSTM, GRU)
+- keras 3.14.1          : High-level neural network API (included with TensorFlow)

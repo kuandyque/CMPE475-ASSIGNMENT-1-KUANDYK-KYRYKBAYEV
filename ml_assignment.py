@@ -1,7 +1,8 @@
 """
-CMPE475 Assignment 1 - Machine Learning Algorithm Comparison
+CMPE475 Assignment 1 & 2 - Machine Learning Algorithm Comparison
 Dataset: tv-shows.csv (Netflix & streaming platform data)
 Task: Binary Classification (Movie vs TV Show)
+Algorithms: 8 traditional ML + 2 ANN (LSTM, GRU)
 Author: Kuandyk Kyrykbayev
 """
 
@@ -12,7 +13,7 @@ Author: Kuandyk Kyrykbayev
 # --- Plot Settings (change these freely) ---
 PLOT_CONFIG = {
     # General
-    "figsize_confusion": (22, 10),       # (width, height) for confusion matrix grid
+    "figsize_confusion": (25, 10),       # (width, height) for confusion matrix grid (2x5 for 10 models)
     "figsize_roc": (12, 9),              # (width, height) for ROC curve plot
     "figsize_bar": (16, 7),              # (width, height) for bar chart
     "dpi": 150,                          # Resolution for saved images
@@ -29,6 +30,8 @@ PLOT_CONFIG = {
         "#1abc9c",  # Logistic Regression - Teal
         "#e67e22",  # KNN - Dark Orange
         "#34495e",  # SVM - Dark Gray
+        "#ff6b6b",  # LSTM - Coral
+        "#4ecdc4",  # GRU - Turquoise
     ],
     "bar_colormap": "viridis",           # Colormap for bar chart: viridis, plasma, coolwarm, Set2, etc.
     "confusion_cmap": "Blues",           # Colormap for confusion matrix: Blues, Reds, Greens, YlOrRd, etc.
@@ -64,6 +67,14 @@ DATA_CONFIG = {
     "rf_n_estimators": 100,              # Number of trees in Random Forest
     "svm_kernel": "rbf",                 # SVM kernel: 'rbf', 'linear', 'poly'
     "logistic_max_iter": 1000,
+    # ANN (LSTM / GRU) settings
+    "lstm_epochs": 50,
+    "lstm_batch_size": 32,
+    "gru_epochs": 50,
+    "gru_batch_size": 32,
+    "ann_learning_rate": 0.001,
+    "ann_validation_split": 0.15,        # Validation split from training data
+    "ann_early_stop_patience": 5,        # Early stopping patience
 }
 
 # --- Output Settings ---
@@ -72,6 +83,7 @@ OUTPUT_CONFIG = {
     "confusion_file": "confusion_matrices.png",
     "roc_file": "roc_curves.png",
     "bar_file": "metrics_comparison.png",
+    "ann_training_file": "ann_training_history.png",  # LSTM/GRU training curves
     "print_table": True,                 # Print result table to console
 }
 
@@ -98,8 +110,19 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 
+# ANN (Homework 2) imports
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, GRU, Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
+
 import warnings
 warnings.filterwarnings("ignore")
+
+# Reproducibility for ANN models
+tf.random.set_seed(42)
+np.random.seed(42)
 
 
 # ============================================================
@@ -292,11 +315,151 @@ print()
 
 
 # ============================================================
-# SECTION 7: DISPLAY RESULT TABLE
+# SECTION 7: ANN MODELS — LSTM & GRU  (Homework 2)
 # ============================================================
 
 print("=" * 60)
-print("STEP 5: Result Table")
+print("STEP 5: Training ANN Models (LSTM & GRU)")
+print("=" * 60)
+
+# --- Reshape data for RNN input: (samples, timesteps, features) ---
+# Each of the 13 features is treated as one timestep with 1 feature value.
+n_features = X_train_scaled.shape[1]  # 13
+X_train_rnn = X_train_scaled.reshape(-1, n_features, 1)
+X_test_rnn = X_test_scaled.reshape(-1, n_features, 1)
+
+print(f"  RNN input shape: {X_train_rnn.shape}  (samples, timesteps={n_features}, features=1)")
+
+
+def build_lstm_model(input_shape, learning_rate):
+    """Builds a 2-layer LSTM model for binary classification."""
+    model = Sequential([
+        LSTM(64, return_sequences=True, input_shape=input_shape),
+        LSTM(32, return_sequences=False),
+        Dense(16, activation='relu'),
+        Dropout(0.3),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(
+        optimizer=Adam(learning_rate=learning_rate),
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
+
+
+def build_gru_model(input_shape, learning_rate):
+    """Builds a 2-layer GRU model for binary classification."""
+    model = Sequential([
+        GRU(64, return_sequences=True, input_shape=input_shape),
+        GRU(32, return_sequences=False),
+        Dense(16, activation='relu'),
+        Dropout(0.3),
+        Dense(1, activation='sigmoid')
+    ])
+    model.compile(
+        optimizer=Adam(learning_rate=learning_rate),
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
+
+
+# Early stopping callback (shared by both models)
+early_stop = EarlyStopping(
+    monitor='val_loss',
+    patience=DATA_CONFIG["ann_early_stop_patience"],
+    restore_best_weights=True,
+    verbose=0
+)
+
+# --- Train LSTM ---
+print("\n  Training LSTM...")
+lstm_model = build_lstm_model(
+    input_shape=(n_features, 1),
+    learning_rate=DATA_CONFIG["ann_learning_rate"]
+)
+lstm_history = lstm_model.fit(
+    X_train_rnn, y_train,
+    epochs=DATA_CONFIG["lstm_epochs"],
+    batch_size=DATA_CONFIG["lstm_batch_size"],
+    validation_split=DATA_CONFIG["ann_validation_split"],
+    callbacks=[early_stop],
+    verbose=0
+)
+
+# Evaluate LSTM
+lstm_prob = lstm_model.predict(X_test_rnn, verbose=0).ravel()
+lstm_pred = (lstm_prob >= 0.5).astype(int)
+
+lstm_acc = accuracy_score(y_test, lstm_pred)
+lstm_prec = precision_score(y_test, lstm_pred, zero_division=0)
+lstm_rec = recall_score(y_test, lstm_pred, zero_division=0)
+lstm_f1 = f1_score(y_test, lstm_pred, zero_division=0)
+lstm_auc = roc_auc_score(y_test, lstm_prob)
+
+results.append({
+    'Model': 'LSTM',
+    'Accuracy': round(lstm_acc, 4),
+    'Precision': round(lstm_prec, 4),
+    'Recall': round(lstm_rec, 4),
+    'F1-Score': round(lstm_f1, 4),
+    'ROC-AUC': round(lstm_auc, 4)
+})
+predictions['LSTM'] = {'y_pred': lstm_pred, 'y_prob': lstm_prob}
+
+print(f"  [OK] {'LSTM':35s} - Accuracy: {lstm_acc:.4f}, F1: {lstm_f1:.4f}, AUC: {lstm_auc:.4f}")
+print(f"       Stopped at epoch {len(lstm_history.history['loss'])} / {DATA_CONFIG['lstm_epochs']}")
+
+# --- Train GRU ---
+print("\n  Training GRU...")
+gru_model = build_gru_model(
+    input_shape=(n_features, 1),
+    learning_rate=DATA_CONFIG["ann_learning_rate"]
+)
+gru_history = gru_model.fit(
+    X_train_rnn, y_train,
+    epochs=DATA_CONFIG["gru_epochs"],
+    batch_size=DATA_CONFIG["gru_batch_size"],
+    validation_split=DATA_CONFIG["ann_validation_split"],
+    callbacks=[early_stop],
+    verbose=0
+)
+
+# Evaluate GRU
+gru_prob = gru_model.predict(X_test_rnn, verbose=0).ravel()
+gru_pred = (gru_prob >= 0.5).astype(int)
+
+gru_acc = accuracy_score(y_test, gru_pred)
+gru_prec = precision_score(y_test, gru_pred, zero_division=0)
+gru_rec = recall_score(y_test, gru_pred, zero_division=0)
+gru_f1 = f1_score(y_test, gru_pred, zero_division=0)
+gru_auc = roc_auc_score(y_test, gru_prob)
+
+results.append({
+    'Model': 'GRU',
+    'Accuracy': round(gru_acc, 4),
+    'Precision': round(gru_prec, 4),
+    'Recall': round(gru_rec, 4),
+    'F1-Score': round(gru_f1, 4),
+    'ROC-AUC': round(gru_auc, 4)
+})
+predictions['GRU'] = {'y_pred': gru_pred, 'y_prob': gru_prob}
+
+print(f"  [OK] {'GRU':35s} - Accuracy: {gru_acc:.4f}, F1: {gru_f1:.4f}, AUC: {gru_auc:.4f}")
+print(f"       Stopped at epoch {len(gru_history.history['loss'])} / {DATA_CONFIG['gru_epochs']}")
+
+# Store histories for plotting
+ann_histories = {'LSTM': lstm_history, 'GRU': gru_history}
+print()
+
+
+# ============================================================
+# SECTION 8: DISPLAY RESULT TABLE  (all 10 models)
+# ============================================================
+
+print("=" * 60)
+print("STEP 6: Result Table (all 10 models)")
 print("=" * 60)
 
 results_df = pd.DataFrame(results)
@@ -314,25 +477,24 @@ print()
 
 
 # ============================================================
-# SECTION 8: PLOTS
+# SECTION 9: PLOTS  (all 10 models)
 # ============================================================
 
 print("=" * 60)
-print("STEP 6: Generating Plots")
+print("STEP 7: Generating Plots")
 print("=" * 60)
 
 pc = PLOT_CONFIG  # shorthand
+all_model_names = list(predictions.keys())  # all 10 model names
 
 
-# --- PLOT 1: Confusion Matrices ---
+# --- PLOT 1: Confusion Matrices (2x5 grid for 10 models) ---
 def plot_confusion_matrices():
-    """Generates a grid of confusion matrices for all 8 models."""
-    fig, axes = plt.subplots(2, 4, figsize=pc["figsize_confusion"])
+    """Generates a 2x5 grid of confusion matrices for all 10 models."""
+    fig, axes = plt.subplots(2, 5, figsize=pc["figsize_confusion"])
     axes = axes.ravel()
 
-    model_names = list(models.keys())
-
-    for i, name in enumerate(model_names):
+    for i, name in enumerate(all_model_names):
         y_pred = predictions[name]['y_pred']
         cm = confusion_matrix(y_test, y_pred)
 
@@ -346,7 +508,8 @@ def plot_confusion_matrices():
         for text in disp.text_.ravel():
             text.set_fontsize(pc["cm_values_fontsize"])
 
-    fig.suptitle('Confusion Matrices - All Models', fontsize=pc["title_fontsize"], fontweight='bold', y=1.02)
+    fig.suptitle('Confusion Matrices - All Models (ML + ANN)',
+                 fontsize=pc["title_fontsize"], fontweight='bold', y=1.02)
     plt.tight_layout()
 
     if pc["save_plots"]:
@@ -359,15 +522,14 @@ def plot_confusion_matrices():
         plt.close()
 
 
-# --- PLOT 2: ROC Curves ---
+# --- PLOT 2: ROC Curves (all 10 models) ---
 def plot_roc_curves():
-    """Generates an overlaid ROC curve plot for all 8 models."""
+    """Generates an overlaid ROC curve plot for all 10 models."""
     fig, ax = plt.subplots(figsize=pc["figsize_roc"])
 
-    model_names = list(models.keys())
     colors = pc["roc_colors"]
 
-    for i, name in enumerate(model_names):
+    for i, name in enumerate(all_model_names):
         y_prob = predictions[name]['y_prob']
         fpr, tpr, _ = roc_curve(y_test, y_prob)
         auc_val = roc_auc_score(y_test, y_prob)
@@ -384,7 +546,8 @@ def plot_roc_curves():
 
     ax.set_xlabel('False Positive Rate', fontsize=pc["label_fontsize"])
     ax.set_ylabel('True Positive Rate', fontsize=pc["label_fontsize"])
-    ax.set_title('ROC Curve Comparison - All Models', fontsize=pc["title_fontsize"], fontweight='bold')
+    ax.set_title('ROC Curve Comparison - All Models (ML + ANN)',
+                 fontsize=pc["title_fontsize"], fontweight='bold')
     ax.legend(loc=pc["roc_legend_loc"], fontsize=pc["legend_fontsize"])
     ax.tick_params(labelsize=pc["tick_fontsize"])
     ax.grid(True, alpha=0.3)
@@ -403,10 +566,10 @@ def plot_roc_curves():
         plt.close()
 
 
-# --- PLOT 3: Metrics Bar Chart ---
+# --- PLOT 3: Metrics Bar Chart (all 10 models) ---
 def plot_metrics_bar():
-    """Generates a grouped bar chart comparing all metrics across models."""
-    fig, ax = plt.subplots(figsize=pc["figsize_bar"])
+    """Generates a grouped bar chart comparing all metrics across 10 models."""
+    fig, ax = plt.subplots(figsize=(18, 7))
 
     n_models = len(results_df)
     n_metrics = len(results_df.columns)
@@ -425,7 +588,8 @@ def plot_metrics_bar():
 
     ax.set_xlabel('Model', fontsize=pc["label_fontsize"])
     ax.set_ylabel('Score', fontsize=pc["label_fontsize"])
-    ax.set_title('Model Comparison - All Metrics', fontsize=pc["title_fontsize"], fontweight='bold')
+    ax.set_title('Model Comparison - All Metrics (ML + ANN)',
+                 fontsize=pc["title_fontsize"], fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(results_df.index, rotation=pc["bar_rotation"],
                        ha='right', fontsize=pc["tick_fontsize"])
@@ -446,16 +610,64 @@ def plot_metrics_bar():
         plt.close()
 
 
+# --- PLOT 4: ANN Training History (Loss & Accuracy curves) ---
+def plot_ann_training_history():
+    """Plots training/validation loss and accuracy for LSTM and GRU."""
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    ann_colors = {'LSTM': '#ff6b6b', 'GRU': '#4ecdc4'}
+
+    for col, (name, history) in enumerate(ann_histories.items()):
+        color = ann_colors[name]
+        epochs_range = range(1, len(history.history['loss']) + 1)
+
+        # --- Loss (top row) ---
+        axes[0, col].plot(epochs_range, history.history['loss'],
+                          color=color, linewidth=2, label='Train Loss')
+        axes[0, col].plot(epochs_range, history.history['val_loss'],
+                          color=color, linewidth=2, linestyle='--', label='Val Loss')
+        axes[0, col].set_title(f'{name} - Loss', fontsize=13, fontweight='bold')
+        axes[0, col].set_xlabel('Epoch', fontsize=11)
+        axes[0, col].set_ylabel('Loss', fontsize=11)
+        axes[0, col].legend(fontsize=10)
+        axes[0, col].grid(True, alpha=0.3)
+
+        # --- Accuracy (bottom row) ---
+        axes[1, col].plot(epochs_range, history.history['accuracy'],
+                          color=color, linewidth=2, label='Train Accuracy')
+        axes[1, col].plot(epochs_range, history.history['val_accuracy'],
+                          color=color, linewidth=2, linestyle='--', label='Val Accuracy')
+        axes[1, col].set_title(f'{name} - Accuracy', fontsize=13, fontweight='bold')
+        axes[1, col].set_xlabel('Epoch', fontsize=11)
+        axes[1, col].set_ylabel('Accuracy', fontsize=11)
+        axes[1, col].legend(fontsize=10)
+        axes[1, col].grid(True, alpha=0.3)
+
+    fig.suptitle('ANN Training History — LSTM vs GRU',
+                 fontsize=pc["title_fontsize"], fontweight='bold', y=1.02)
+    plt.tight_layout()
+
+    if pc["save_plots"]:
+        fig.savefig(OUTPUT_CONFIG["ann_training_file"], dpi=pc["dpi"], bbox_inches='tight')
+        print(f"  [OK] Saved: {OUTPUT_CONFIG['ann_training_file']}")
+
+    if pc["show_plots"]:
+        plt.show()
+    else:
+        plt.close()
+
+
 # Generate all plots
 plot_confusion_matrices()
 plot_roc_curves()
 plot_metrics_bar()
+plot_ann_training_history()
 
 print()
 
 
 # ============================================================
-# SECTION 9: SUMMARY
+# SECTION 10: SUMMARY
 # ============================================================
 
 print("=" * 60)
@@ -470,13 +682,18 @@ best_auc = results_df.loc[best_auc_model, 'ROC-AUC']
 print(f"  Dataset:          tv-shows.csv ({df.shape[0]} rows)")
 print(f"  Task:             Binary Classification (Movie vs TV Show)")
 print(f"  Features used:    {len(features)}")
+print(f"  Models trained:   {len(results_df)} (8 traditional ML + 2 ANN)")
 print(f"  Train/Test split: {int((1-DATA_CONFIG['test_size'])*100)}/{int(DATA_CONFIG['test_size']*100)}")
 print(f"  Best by Accuracy: {best_model} ({best_acc})")
 print(f"  Best by ROC-AUC:  {best_auc_model} ({best_auc})")
+print(f"\n  ANN Summary:")
+print(f"    LSTM - Accuracy: {lstm_acc:.4f}, F1: {lstm_f1:.4f}, AUC: {lstm_auc:.4f}")
+print(f"    GRU  - Accuracy: {gru_acc:.4f}, F1: {gru_f1:.4f}, AUC: {gru_auc:.4f}")
 print(f"\n  Output files:")
 print(f"    - {OUTPUT_CONFIG['results_csv']}")
 if PLOT_CONFIG["save_plots"]:
     print(f"    - {OUTPUT_CONFIG['confusion_file']}")
     print(f"    - {OUTPUT_CONFIG['roc_file']}")
     print(f"    - {OUTPUT_CONFIG['bar_file']}")
+    print(f"    - {OUTPUT_CONFIG['ann_training_file']}")
 print()

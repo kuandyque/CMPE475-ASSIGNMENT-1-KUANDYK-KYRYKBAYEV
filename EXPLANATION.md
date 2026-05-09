@@ -1,6 +1,6 @@
-# CMPE475 Assignment 1 — Detailed Explanation
+# CMPE475 Assignment 1 & 2 — Detailed Explanation
 
-## Machine Learning Algorithm Comparison on TV Shows Dataset
+## Machine Learning Algorithm Comparison on TV Shows Dataset (Including LSTM & GRU)
 
 ---
 
@@ -12,10 +12,11 @@
 4. [Feature Engineering — Why and How](#4-feature-engineering--why-and-how)
 5. [Data Preprocessing](#5-data-preprocessing)
 6. [The 5 Metrics — What They Mean](#6-the-5-metrics--what-they-mean)
-7. [The 8 Algorithms — How Each Works](#7-the-8-algorithms--how-each-works)
-8. [Results Analysis](#8-results-analysis)
-9. [Plots Explanation](#9-plots-explanation)
-10. [Libraries Used](#10-libraries-used)
+7. [The 8 Traditional ML Algorithms](#7-the-8-traditional-ml-algorithms--how-each-works)
+8. [The 2 ANN Models — LSTM & GRU (Homework 2)](#8-the-2-ann-models--lstm--gru-homework-2)
+9. [Results Analysis](#9-results-analysis)
+10. [Plots Explanation](#10-plots-explanation)
+11. [Libraries Used](#11-libraries-used)
 
 ---
 
@@ -276,7 +277,7 @@ ROC-AUC = Area under the Receiver Operating Characteristic curve
 
 ---
 
-## 7. The 8 Algorithms — How Each Works
+## 7. The 8 Traditional ML Algorithms — How Each Works
 
 ### 1. Bayesian (Naive Bayes) — `GaussianNB()`
 
@@ -388,9 +389,111 @@ If `release_year` ranges 0-2000 and `country_US` ranges 0-1, then release_year w
 
 ---
 
-## 8. Results Analysis
+## 8. The 2 ANN Models — LSTM & GRU (Homework 2)
 
-### The Result Table
+### Why Add Neural Networks?
+
+Homework 2 extends the comparison by adding two **Artificial Neural Network (ANN)** models from the Recurrent Neural Network (RNN) family. RNNs are designed to process **sequential data** where the order of inputs matters (e.g., time series, text, speech). By applying them to our tabular dataset, we can compare their performance against traditional ML algorithms and understand when deep learning approaches are beneficial.
+
+### Data Reshaping for RNNs
+
+RNNs require 3D input: `(samples, timesteps, features_per_step)`. Our tabular data is 2D: `(samples, 13_features)`. We reshape it to `(samples, 13, 1)` — treating each of the 13 features as one "timestep" with 1 value. This is a common approach for applying RNNs to tabular data in academic comparisons.
+
+```python
+X_train_rnn = X_train_scaled.reshape(-1, 13, 1)  # (7470, 13, 1)
+X_test_rnn = X_test_scaled.reshape(-1, 13, 1)    # (1868, 13, 1)
+```
+
+### 9. LSTM (Long Short-Term Memory)
+
+**How it works**: LSTM is a specialized RNN that solves the **vanishing gradient problem** — the inability of standard RNNs to learn dependencies over long sequences. It introduces a **cell state** (a conveyor belt of information) controlled by three gates:
+
+1. **Forget Gate**: Decides what information to discard from the cell state
+   ```
+   f_t = σ(W_f · [h_{t-1}, x_t] + b_f)
+   ```
+
+2. **Input Gate**: Decides what new information to store in the cell state
+   ```
+   i_t = σ(W_i · [h_{t-1}, x_t] + b_i)
+   C̃_t = tanh(W_C · [h_{t-1}, x_t] + b_C)
+   ```
+
+3. **Output Gate**: Decides what to output based on the cell state
+   ```
+   o_t = σ(W_o · [h_{t-1}, x_t] + b_o)
+   h_t = o_t * tanh(C_t)
+   ```
+
+Each gate is a neural network layer with sigmoid activation (σ) that outputs values between 0 and 1, acting as a "valve" for information flow.
+
+**Our architecture**:
+
+```python
+model = Sequential([
+    LSTM(64, return_sequences=True, input_shape=(13, 1)),  # Layer 1: 64 units
+    LSTM(32, return_sequences=False),                       # Layer 2: 32 units
+    Dense(16, activation='relu'),                           # Fully connected layer
+    Dropout(0.3),                                           # 30% dropout regularization
+    Dense(1, activation='sigmoid')                          # Output: probability
+])
+```
+
+**Hyperparameter choices**:
+- **2 LSTM layers (64 → 32)**: Stacked LSTM layers allow learning hierarchical representations. The first layer processes raw feature sequences; the second learns higher-level patterns. `return_sequences=True` on the first layer passes the full sequence to the second layer.
+- **Dense(16, relu)**: A fully connected layer after the LSTM layers adds non-linear transformation capacity before the final output.
+- **Dropout(0.3)**: Randomly drops 30% of neurons during training to prevent overfitting — especially important with 9K samples and thousands of neural network parameters.
+- **Adam optimizer (lr=0.001)**: Adaptive learning rate optimizer that's the standard choice for neural networks.
+- **EarlyStopping (patience=5)**: Stops training when validation loss hasn't improved for 5 consecutive epochs, preventing overfitting.
+
+**Our result**: Accuracy = 0.9845, F1 = 0.9742, AUC = 0.9977. Stopped at epoch 22/50.
+
+### 10. GRU (Gated Recurrent Unit)
+
+**How it works**: GRU is a **simplified variant of LSTM** proposed by Cho et al. (2014). It reduces the three gates to two and merges the cell state with the hidden state:
+
+1. **Reset Gate**: Controls how much past information to forget
+   ```
+   r_t = σ(W_r · [h_{t-1}, x_t] + b_r)
+   ```
+
+2. **Update Gate**: Controls how much new vs old information to keep (combines LSTM's forget + input gates)
+   ```
+   z_t = σ(W_z · [h_{t-1}, x_t] + b_z)
+   h_t = (1 - z_t) * h_{t-1} + z_t * h̃_t
+   ```
+
+**Key difference from LSTM**: GRU has **no separate cell state** — it uses only the hidden state. This means fewer parameters (faster training, less memory) but potentially less expressive power for complex patterns.
+
+**Our architecture**:
+
+```python
+model = Sequential([
+    GRU(64, return_sequences=True, input_shape=(13, 1)),   # Layer 1: 64 units
+    GRU(32, return_sequences=False),                        # Layer 2: 32 units
+    Dense(16, activation='relu'),                           # Fully connected layer
+    Dropout(0.3),                                           # 30% dropout regularization
+    Dense(1, activation='sigmoid')                          # Output: probability
+])
+```
+
+**LSTM vs GRU comparison**:
+
+| Aspect | LSTM | GRU |
+|---|---|---|
+| Gates | 3 (forget, input, output) | 2 (reset, update) |
+| Cell state | Separate cell state + hidden state | Only hidden state |
+| Parameters | More (slower training) | Fewer (faster training) |
+| Expressiveness | Higher | Lower |
+| Best for | Complex, long sequences | Simpler patterns, smaller datasets |
+
+**Our result**: Accuracy = 0.9234, F1 = 0.8817, AUC = 0.9725. Stopped at epoch 5/50.
+
+---
+
+## 9. Results Analysis
+
+### The Result Table (10 Models: 8 ML + 2 ANN)
 
 | Model | Accuracy | Precision | Recall | F1-Score | ROC-AUC |
 |---|---|---|---|---|---|
@@ -402,8 +505,10 @@ If `release_year` ranges 0-2000 and `country_US` ranges 0-1, then release_year w
 | Logistic Regression | 0.9963 | 0.9894 | 0.9982 | 0.9938 | 0.9998 |
 | KNN | 0.9764 | 0.9481 | 0.9751 | 0.9614 | 0.9905 |
 | SVM | 0.9930 | 0.9791 | 0.9982 | 0.9885 | 0.9999 |
+| **LSTM** | 0.9845 | 0.9734 | 0.9751 | 0.9742 | 0.9977 |
+| **GRU** | 0.9234 | 0.8238 | 0.9484 | 0.8817 | 0.9725 |
 
-### Key Observations
+### Key Observations — Traditional ML
 
 1. **Best overall performers**: Decision Trees and Random Forest tie at 99.68% accuracy. Random Forest has perfect recall (1.0000) — it found every single TV Show.
 
@@ -417,11 +522,21 @@ If `release_year` ranges 0-2000 and `country_US` ranges 0-1, then release_year w
 
 6. **ROC-AUC scores**: Random Forest, Logistic Regression, and SVM all achieve ROC-AUC ≥ 0.9998, meaning they almost perfectly rank TV Shows higher than Movies in their probability outputs.
 
+### Key Observations — ANN Models (Homework 2)
+
+7. **LSTM achieves strong results** (Accuracy = 0.9845), placing between KNN and SVM in the overall ranking. Its 3-gate mechanism allows fine-grained control over which features are most informative, converging over 22 epochs.
+
+8. **GRU underperforms** (Accuracy = 0.9234), stopping very early at epoch 5. Its simpler 2-gate architecture converged too quickly to a suboptimal solution. The validation loss plateaued before the model could learn the full complexity of feature interactions.
+
+9. **Traditional ML beats ANN on tabular data**: All traditional ML models (except Simple Linear Regression) outperform GRU, and most outperform LSTM. This is expected — RNNs are designed for sequential data where temporal order matters. Our pseudo-sequence reshaping `(13, 1)` doesn't provide meaningful sequential relationships between features.
+
+10. **LSTM > GRU**: LSTM's additional forget gate gives it more capacity to selectively retain or discard feature information, resulting in 6.1 percentage points higher accuracy than GRU.
+
 ---
 
-## 9. Plots Explanation
+## 10. Plots Explanation
 
-### Plot 1: Confusion Matrices
+### Plot 1: Confusion Matrices (2×5 grid for 10 models)
 
 A confusion matrix is a 2×2 grid showing:
 
@@ -436,9 +551,9 @@ Actual TV Show  False Negative (FN) True Positive (TP)
 - **Bottom-left (FN)**: TV Show incorrectly predicted as Movie (missed)
 - **Bottom-right (TP)**: TV Show correctly predicted as TV Show
 
-**How to read**: The diagonal (top-left to bottom-right) shows correct predictions. Higher numbers on the diagonal = better model. Numbers off the diagonal are errors.
+**How to read**: The diagonal (top-left to bottom-right) shows correct predictions. Higher numbers on the diagonal = better model. Numbers off the diagonal are errors. The LSTM and GRU matrices show slightly more off-diagonal errors compared to the top-performing traditional ML models.
 
-### Plot 2: ROC Curves
+### Plot 2: ROC Curves (10 models)
 
 The ROC (Receiver Operating Characteristic) curve plots:
 - **X-axis**: False Positive Rate (FPR) — how many movies are wrongly called TV Shows
@@ -449,17 +564,28 @@ The ROC (Receiver Operating Characteristic) curve plots:
 - A curve along the **diagonal** = random guessing
 - The **area under the curve** (AUC) quantifies this — closer to 1.0 is better
 
-In our ROC plot, Simple Linear Regression's curve is far from the top-left (AUC=0.657), while all other models hug the corner (AUC > 0.99).
+In our ROC plot, Simple Linear Regression's curve is far from the top-left (AUC=0.657), LSTM and GRU are close to the top-left (AUC > 0.97), and the best traditional ML models hug the corner (AUC > 0.99).
 
-### Plot 3: Metrics Bar Chart
+### Plot 3: Metrics Bar Chart (10 models)
 
-A grouped bar chart comparing all 5 metrics across all 8 models side by side.
+A grouped bar chart comparing all 5 metrics across all 10 models side by side.
 
-**How to read**: Taller bars = better performance. Look for models where all 5 bars are consistently tall (Random Forest, Decision Trees, Logistic Regression) versus models with short bars (Simple Linear Regression).
+**How to read**: Taller bars = better performance. Look for models where all 5 bars are consistently tall (Random Forest, Decision Trees, Logistic Regression) versus models with short bars (Simple Linear Regression). LSTM shows bars comparable to KNN/SVM, while GRU bars are shorter, reflecting its lower performance.
+
+### Plot 4: ANN Training History (Homework 2)
+
+A 2×2 grid showing training curves for LSTM (left column) and GRU (right column):
+
+- **Top row (Loss)**: Training loss (solid line) and validation loss (dashed line) over epochs. Both should decrease over time. If validation loss starts increasing while training loss continues to decrease, the model is **overfitting**.
+- **Bottom row (Accuracy)**: Training accuracy (solid) and validation accuracy (dashed) over epochs. Both should increase and converge.
+
+**How to read**:
+- **LSTM** shows gradual convergence over ~22 epochs with training and validation curves tracking closely — good generalization.
+- **GRU** stops very early at epoch 5, with validation loss plateauing quickly — the simpler architecture couldn't improve further on this data.
 
 ---
 
-## 10. Libraries Used
+## 11. Libraries Used
 
 | Library | Version | Purpose |
 |---|---|---|
@@ -468,6 +594,8 @@ A grouped bar chart comparing all 5 metrics across all 8 models side by side.
 | `scikit-learn` | 1.8.0 | All ML algorithms, metrics, preprocessing |
 | `matplotlib` | 3.10.8 | Base plotting library |
 | `seaborn` | 0.13.2 | Statistical visualizations (built on matplotlib) |
+| `tensorflow` | 2.21.0 | Deep learning framework (LSTM, GRU models) |
+| `keras` | 3.14.1 | High-level neural network API (included with TensorFlow) |
 
 ### scikit-learn Components Used
 
@@ -490,3 +618,15 @@ A grouped bar chart comparing all 5 metrics across all 8 models side by side.
 | `roc_auc_score` | `sklearn.metrics` | Calculate ROC-AUC |
 | `confusion_matrix` | `sklearn.metrics` | Generate confusion matrix |
 | `roc_curve` | `sklearn.metrics` | Generate ROC curve data points |
+
+### TensorFlow/Keras Components Used (Homework 2)
+
+| Component | Import Path | Purpose |
+|---|---|---|
+| `Sequential` | `tensorflow.keras.models` | Sequential model container |
+| `LSTM` | `tensorflow.keras.layers` | Long Short-Term Memory RNN layer |
+| `GRU` | `tensorflow.keras.layers` | Gated Recurrent Unit RNN layer |
+| `Dense` | `tensorflow.keras.layers` | Fully connected layer |
+| `Dropout` | `tensorflow.keras.layers` | Regularization layer (random neuron deactivation) |
+| `EarlyStopping` | `tensorflow.keras.callbacks` | Stop training when validation loss plateaus |
+| `Adam` | `tensorflow.keras.optimizers` | Adaptive Moment Estimation optimizer |
